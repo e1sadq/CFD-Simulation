@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>CFD 建築流場專業診斷系統 - 114408123 邱品豪 (完美修正版)</title>
+    <style>
+        :root { --ansys-blue: #00aaff; --solver-green: #00ff88; --bg-dark: #0a0a0c; --panel-bg: rgba(18, 18, 20, 0.95); }
+        body { margin: 0; font-family: "Segoe UI", "Microsoft JhengHei", sans-serif; background: var(--bg-dark); color: #fff; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
+        
+        /* 雙層頂部控制面板 */
+        #top-bar { background: #161618; border-bottom: 1px solid #333; display: flex; flex-direction: column; z-index: 100; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .row { display: flex; padding: 10px 20px; gap: 15px; align-items: center; border-bottom: 1px dashed #2a2a2a; flex-wrap: wrap; }
+        .row:last-child { border-bottom: none; }
+        
+        .control-group { background: #222; padding: 6px 12px; border-radius: 4px; border-left: 3px solid var(--ansys-blue); display: flex; align-items: center; gap: 8px; font-size: 13px;}
+        .control-group.adv { border-left-color: #ffaa00; }
+        
+        input[type=range], select, input[type=number] { background: #333; border: 1px solid #555; color: white; border-radius: 3px; padding: 4px 6px; }
+        input[type=range] { width: 100px; cursor: pointer; }
+        .val { color: var(--solver-green); font-weight: bold; min-width: 40px; display: inline-block; text-align: right; }
+        
+        .btn-solve { background: var(--solver-green); color: #000; border: none; padding: 8px 18px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.3s; display: flex; align-items: center; gap: 5px; }
+        .btn-solve.stop { background: #ff4500; color: white; }
+
+        /* 畫布與資訊卡 */
+        #viewport { flex-grow: 1; position: relative; }
+        .analysis-card { position: absolute; top: 15px; right: 15px; width: 440px; background: var(--panel-bg); border-radius: 10px; padding: 22px; border: 1px solid #333; box-shadow: 0 10px 40px rgba(0,0,0,0.9); max-height: calc(100vh - 120px); overflow-y: auto; backdrop-filter: blur(8px); }
+        h2 { margin: 0 0 12px 0; color: var(--ansys-blue); font-size: 18px; border-bottom: 1px solid #333; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+        
+        .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+        .data-box { background: #1a1a1a; padding: 10px; border-radius: 6px; border: 1px solid #2a2a2a; }
+        .data-label { font-size: 11px; color: #888; margin-bottom: 4px; }
+        .data-val { font-size: 15px; font-weight: bold; font-family: 'Courier New', monospace; }
+
+        .legend { margin: 15px 0 5px 0; height: 12px; background: linear-gradient(to right, #0011ff, #00d4ff, #ffbb00, #ff0000); border-radius: 6px; }
+        .legend-labels { display: flex; justify-content: space-between; font-size: 10px; color: #aaa; margin-bottom: 15px; }
+        
+        /* 深度分析區塊 */
+        .insight-section { background: #161616; padding: 12px; border-radius: 6px; border-left: 4px solid #ffbc00; margin-bottom: 12px; }
+        .insight-title { font-weight: bold; color: #fff; margin-bottom: 8px; font-size: 14px; border-bottom: 1px solid #333; padding-bottom: 5px;}
+        .insight-text { font-size: 12.5px; line-height: 1.7; color: #ccc; text-align: justify; }
+        
+        .pro-con { margin-top: 10px; border-top: 1px dashed #444; padding-top: 8px; font-size: 12.5px; }
+        .pro { color: var(--solver-green); margin-bottom: 5px; font-weight: bold; }
+        .con { color: #ff6b6b; font-weight: bold; }
+        .highlight { color: var(--ansys-blue); font-weight: bold; }
+
+        .hint { position: absolute; bottom: 15px; left: 15px; color: #777; font-size: 11px; }
+    </style>
+</head>
+<body>
+
+<div id="top-bar">
+    <div class="row">
+        <button id="solveBtn" class="btn-solve" onclick="toggleSimulation()">
+            <span id="solveIcon">▶</span> <span id="solveText">啟動求解計算 (Run)</span>
+        </button>
+        <div class="control-group">
+            <strong>🧭 風向角 (θ):</strong>
+            <input type="number" id="angleInput" value="0" style="width:45px;">°
+            <input type="range" id="angleSlider" min="0" max="360" value="0">
+        </div>
+        <div class="control-group">
+            <strong>📏 建築棟距 (Gap):</strong>
+            <input type="number" id="gapInput" value="12" style="width:40px;"> m
+            <input type="range" id="gapSlider" min="6" max="30" value="12">
+        </div>
+        <div class="control-group">
+            <strong>🌪️ 入口風速:</strong>
+            <input type="number" id="velInput" value="5" min="1" max="20" style="width:40px;"> m/s
+        </div>
+    </div>
+    <div class="row">
+        <div class="control-group adv">
+            <strong>🪓 剖面方向:</strong>
+            <select id="planeMode" onchange="updatePlaneOrientation()">
+                <option value="Y" selected>水平面 (XY高度切片)</option>
+                <option value="X">縱切面 (YZ左右切片)</option>
+                <option value="Z">橫切面 (XZ前後切片)</option>
+            </select>
+        </div>
+        <div class="control-group adv">
+            <strong>📐 剖面位置:</strong>
+            <input type="range" id="posSlider" min="0" max="30" step="0.5" value="5">
+            <span id="posTxt" class="val">5.0</span>m
+        </div>
+        <div class="control-group adv">
+            <strong>🧠 紊流模型:</strong>
+            <select id="turbSelect" onchange="updateDisplay()">
+                <option value="1">Standard k-ε</option>
+                <option value="2" selected>Realizable k-ε (穩定)</option>
+                <option value="3">k-ω SST (高精度)</option>
+            </select>
+        </div>
+        <div class="control-group adv">
+            <strong>🔄 疊代 (Iter):</strong>
+            <input type="number" id="iterInput" value="1000" style="width:55px;">
+        </div>
+    </div>
+</div>
+
+<div id="viewport">
+    <div class="analysis-card">
+        <h2>🏗️ 建築風場診斷報告 <span id="statusBadge" class="status-badge paused">PAUSED</span></h2>
+        
+        <div class="data-grid">
+            <div class="data-box">
+                <div class="data-label">環境參考風速 (U_ref)</div>
+                <div class="data-val" style="color: var(--ansys-blue);" id="envV">0.00 m/s</div>
+            </div>
+            <div class="data-box">
+                <div class="data-label">切面局部極大風速</div>
+                <div class="data-val" style="color: #ff4500;" id="maxV">0.00 m/s</div>
+            </div>
+        </div>
+
+        <div class="legend"></div>
+        <div class="legend-labels"><span>0.0 (死角)</span><span>中等流速</span><span><span id="maxLabel">5.0</span> (強風)</span></div>
+
+        <div class="insight-section">
+            <div class="insight-title">🔍 物理現象觀測與分析</div>
+            <div class="insight-text" id="obsText">...</div>
+        </div>
+        <div class="insight-section" style="border-left-color: #00aaff;">
+            <div class="insight-title">📚 都市風工程專業知識</div>
+            <div id="phyText" class="insight-text">...</div>
+        </div>
+        <div class="insight-section" style="border-left-color: var(--solver-green);">
+            <div class="insight-title">📐 設計優缺點與建議</div>
+            <div class="pro-con">
+                <div class="pro" id="proText">➕ 優點分析：...</div>
+                <div class="con" id="conText">➖ 缺點評估：...</div>
+            </div>
+        </div>
+    </div>
+    <div class="hint">🖱️ 視角：左鍵旋轉 | 右鍵平移 | 滾輪縮放。切換「縱切面」至 X=0 可觀測氣流下洗產生的馬蹄渦流剖面。</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<script>
+    let scene, camera, renderer, controls, b1, b2, slicePlane, arrowInstancedMesh;
+    let angle = 0, refVel = 5, slicePos = 5, gap = 12, planeMode = 'Y', turbModel = 2;
+    let isRunning = false;
+    const arrowCount = 4000;
+    const dummy = new THREE.Object3D();
+
+    function getArrowColor(normSpeed) {
+        let c = new THREE.Color();
+        if (normSpeed < 0.33) c.lerpColors(new THREE.Color(0x0011ff), new THREE.Color(0x00d4ff), normSpeed/0.33);
+        else if (normSpeed < 0.66) c.lerpColors(new THREE.Color(0x00d4ff), new THREE.Color(0xffbb00), (normSpeed-0.33)/0.33);
+        else c.lerpColors(new THREE.Color(0xffbb00), new THREE.Color(0xff0000), (normSpeed-0.66)/0.34);
+        return c;
+    }
+
+    // --- 真實 3D 向量場物理演算 ---
+    function getVelocity(x, y, z) {
+        let rad = (angle * Math.PI) / 180;
+        let cosA = Math.cos(rad), sinA = Math.sin(rad);
+        let rnx = x * cosA - z * sinA, rnz = x * sinA + z * cosA;
+
+        let envU = refVel * Math.pow(Math.max(0.1, y) / 20, 0.22);
+        let vx = Math.sin(rad) * envU, vz = -Math.cos(rad) * envU, vy = 0;
+
+        if (y > 35) return { speed: envU, vx, vy, vz };
+
+        const b1Z = -gap/2, b2Z = gap/2;
+        // 建築實體判定 (建築高度為20m)
+        if (Math.abs(x) <= 8 && y <= 20 && (Math.abs(z - b1Z) <= 4 || Math.abs(z - b2Z) <= 4)) return { speed: 0, vx: 0, vy: 0, vz: 0 };
+
+        let speed = envU;
+        const bCenters = [ {x:0, z:b1Z}, {x:0, z:b2Z} ];
+        let totalWake = 0, totalAccel = 0;
+
+        bCenters.forEach((bc, idx) => {
+            let dx = x - bc.x, dz = z - bc.z;
+            let lnx = dx * cosA - dz * sinA, lnz = dx * sinA + dz * cosA;
+
+            // 馬蹄形渦流成因：迎風面下洗 (Downwash)
+            if (lnz < 0 && lnz > -8 && Math.abs(lnx) < 9) {
+                if (y < 8) vy -= envU * 0.4 * (1 - y/8); // 近地面強烈下洗
+                else if (y > 15) vy += envU * 0.3; // 越頂爬升
+            }
+
+            // 尾流區下沉
+            if (lnz > 0 && lnz < 25 && y < 22 && Math.abs(lnx) < 10) {
+                let spread = (turbModel == 3) ? 6 : 8;
+                let intensity = Math.exp(-lnz / 18.0);
+                totalWake += Math.exp(-(lnx * lnx) / (spread * spread)) * intensity;
+                vy -= envU * 0.1; // 尾流下沉
+            }
+
+            // 角流加速 (Corner Stream)
+            if (Math.abs(lnx) > 6 && Math.abs(lnx) < 16 && Math.abs(lnz) < 10 && y <= 20) {
+                totalAccel += Math.exp(-Math.abs(Math.abs(lnx) - 8) * 0.4) * 0.6;
+            }
+        });
+
+        speed = speed * Math.max(0, (1 - totalWake)) + envU * totalAccel;
+        vx = Math.sin(rad) * speed;
+        vz = -Math.cos(rad) * speed;
+        let finalSpeed = Math.sqrt(vx*vx + vy*vy + vz*vz);
+
+        return { speed: finalSpeed, vx, vy, vz };
+    }
+
+    function init() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a0c);
+        camera = new THREE.PerspectiveCamera(45, window.innerWidth/(window.innerHeight-120), 0.1, 1000);
+        camera.position.set(55, 45, 65);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight-120);
+        document.getElementById('viewport').appendChild(renderer.domElement);
+
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 10, 0);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        const sun = new THREE.DirectionalLight(0xffffff, 0.8); sun.position.set(20,50,20); scene.add(sun);
+        
+        // 黑色的參考地面網格 (Z=0底層)
+        scene.add(new THREE.GridHelper(100, 50, 0x333333, 0x111111));
+
+        const bMat = new THREE.MeshPhongMaterial({ color: 0x666666, transparent: true, opacity: 0.85 });
+        b1 = new THREE.Mesh(new THREE.BoxGeometry(16, 20, 8), bMat); scene.add(b1);
+        b2 = new THREE.Mesh(new THREE.BoxGeometry(16, 20, 8), bMat); scene.add(b2);
+
+        // 確保建築物底部貼齊地面網格 (Y=0)
+        b1.position.y = 10;
+        b2.position.y = 10;
+
+        slicePlane = new THREE.Mesh(new THREE.PlaneGeometry(80, 80, 100, 100), new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.65, side: THREE.DoubleSide }));
+        scene.add(slicePlane);
+
+        const arrowGeo = new THREE.ConeGeometry(0.35, 1.4, 4);
+        arrowGeo.rotateX(Math.PI / 2);
+        arrowInstancedMesh = new THREE.InstancedMesh(arrowGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), arrowCount);
+        scene.add(arrowInstancedMesh);
+
+        setupUI();
+        updatePlaneOrientation(); // 啟動時先呼叫一次，確保切面與滑桿同步
+        animate();
+    }
+
+    function setupUI() {
+        ['angleSlider', 'angleInput'].forEach(id => document.getElementById(id).oninput = e => { 
+            angle = document.getElementById('angleInput').value = document.getElementById('angleSlider').value = e.target.value; updateDisplay(); 
+        });
+        ['gapSlider', 'gapInput'].forEach(id => document.getElementById(id).oninput = e => { 
+            gap = document.getElementById('gapInput').value = document.getElementById('gapSlider').value = e.target.value; updateDisplay(); 
+        });
+        document.getElementById('velInput').onchange = e => { refVel = e.target.value; updateDisplay(); };
+        
+        // ★ 剖面滑桿：切換高度或左右前後 ★
+        document.getElementById('posSlider').oninput = e => { 
+            slicePos = parseFloat(e.target.value); 
+            document.getElementById('posTxt').innerText = slicePos.toFixed(1); 
+            updateDisplay(); 
+        };
+        
+        document.getElementById('turbSelect').onchange = e => { turbModel = e.target.value; updateDisplay(); };
+    }
+
+    // ★ 關鍵修正：確實更新下拉選單的數值並重新設定平面 ★
+    function updatePlaneOrientation() {
+        planeMode = document.getElementById('planeMode').value; // 讀取最新的下拉選單數值
+        const s = document.getElementById('posSlider');
+        
+        if (planeMode === 'Y') { 
+            slicePlane.rotation.set(-Math.PI/2, 0, 0); 
+            s.min = 0; s.max = 35; s.value = slicePos = 5; 
+        } else if (planeMode === 'X') { 
+            slicePlane.rotation.set(0, -Math.PI/2, 0); 
+            s.min = -35; s.max = 35; s.value = slicePos = 0; 
+        } else if (planeMode === 'Z') { 
+            slicePlane.rotation.set(0, 0, 0); 
+            s.min = -45; s.max = 45; s.value = slicePos = 0; 
+        }
+        
+        document.getElementById('posTxt').innerText = slicePos.toFixed(1);
+        updateDisplay();
+    }
+
+    function updateDisplay() {
+        // 更新建築物間距
+        b1.position.set(0, 10, -gap/2); 
+        b2.position.set(0, 10, gap/2);
+
+        // 更新切面位置
+        if (planeMode === 'Y') slicePlane.position.set(0, slicePos, 0);
+        else if (planeMode === 'X') slicePlane.position.set(slicePos, 10, 0);
+        else slicePlane.position.set(0, 10, slicePos);
+
+        slicePlane.updateMatrixWorld();
+        const posAttr = slicePlane.geometry.attributes.position;
+        const colors = [];
+        let maxV = 0;
+        let worldPos = new THREE.Vector3();
+
+        for(let i=0; i<posAttr.count; i++) {
+            worldPos.fromBufferAttribute(posAttr, i).applyMatrix4(slicePlane.matrixWorld);
+            let s = getVelocity(worldPos.x, worldPos.y, worldPos.z).speed; 
+            if(s > maxV) maxV = s;
+            let c = getArrowColor(Math.min(1, s/(refVel*1.5)));
+            colors.push(c.r, c.g, c.b);
+        }
+        slicePlane.geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        
+        let envVal = refVel * Math.pow(Math.max(0.1, planeMode==='Y' ? slicePos : 10)/20, 0.22);
+        document.getElementById('envV').innerText = envVal.toFixed(2) + " m/s";
+        document.getElementById('maxV').innerText = maxV.toFixed(2) + " m/s";
+        document.getElementById('maxLabel').innerText = (refVel*1.5).toFixed(1);
+
+        generateExpertReport();
+    }
+
+    function generateExpertReport() {
+        let obs = "", phy = "", pro = "", con = "";
+        
+        // 1. 物理現象觀測
+        if (planeMode === 'Y') {
+            obs = `目前為 <b>水平切片 (XY平面)</b>，觀測高度為 ${slicePos.toFixed(1)}m。`;
+            if (slicePos < 5) {
+                obs += `緊貼地面層，可清晰觀測到 <span class="highlight">馬蹄形渦流 (Horseshoe Vortex)</span> 的擴散跡象。風場向量在建築前方向外側彎曲捲動。`;
+            } else if (slicePos > 16) {
+                obs += `接近頂部。氣流被擠向外側，形成明顯的橘紅色 <span class="highlight">角流加速帶 (Corner Stream)</span>。`;
+            } else {
+                obs += `觀察重點在於背風側的屏蔽效應與兩棟之間的穿堂風。`;
+            }
+        } else if (planeMode === 'X') {
+            obs = `目前為 <b>縱切面 (YZ左右剖面)</b>，X軸座標：${slicePos.toFixed(1)}m。這是觀測 3D 垂直流場的最佳視角！`;
+            if (Math.abs(slicePos) < 5) {
+                obs += `<br>👉 您可以清楚看到迎風面箭頭向下傾斜，這就是馬蹄渦流成因的 <span class="highlight">下洗氣流 (Downwash)</span>；同時也能看見屋頂氣流的越頂與背風面下沉現象。`;
+            }
+        } else {
+            obs = `目前為 <b>橫切面 (XZ前後剖面)</b>，適合觀測建築尾流在空間中的橫向延展寬度。`;
+        }
+
+        // 2. 專業知識
+        phy = `根據 <b>AIJ (日本建築學會)</b> 與歐洲 COST 指南，兩建築棟距 <b>Gap=${gap}m</b> 時：`;
+        if (gap < 10) phy += `<br>⚠️ <b>間距狹窄警告：</b>兩建築之尾流相互干擾（流場耦合）。後棟的風壓極低，失去自然通風潛力。`;
+        else if (gap > 20) phy += `<br>✅ <b>自然通風恢復：</b>棟距寬廣。前方尾流的動能有足夠空間恢復，後棟建築可有效獲得新鮮對流。`;
+        else phy += `<br>ℹ️ 處於過渡區。後方建築位於前棟的屏蔽風影內，風力雖減弱，但通道間仍有微弱紊流。`;
+
+        // 3. 優缺點
+        pro = `➕ <b>結構優勢：</b>後棟建築因前方遮擋，其承受的總體風載重 (Total Wind Load) 大幅減少，可優化結構設計。`;
+        con = `➖ <b>環境風險：</b>尾流死角區 (深藍色) 的空氣交換率 (ACH) 幾乎停滯。若此區為開放空間，將嚴重累積廢氣與熱島高溫。`;
+
+        document.getElementById('obsText').innerHTML = obs;
+        document.getElementById('phyText').innerHTML = phy;
+        document.getElementById('proText').innerHTML = pro;
+        document.getElementById('conText').innerHTML = con;
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        if(isRunning) {
+            let matrix = new THREE.Matrix4(), q = new THREE.Quaternion();
+            for(let i=0; i<arrowCount; i++) {
+                arrowInstancedMesh.getMatrixAt(i, matrix);
+                let pos = new THREE.Vector3().setFromMatrixPosition(matrix);
+                
+                // 維持動態箭頭在觀測剖面附近
+                if (planeMode === 'Y') pos.y = slicePos + (Math.random()-0.5)*1.5;
+                else if (planeMode === 'X') pos.x = slicePos + (Math.random()-0.5)*1.5;
+                else pos.z = slicePos + (Math.random()-0.5)*1.5;
+
+                let res = getVelocity(pos.x, pos.y, pos.z);
+                pos.x += res.vx * 0.08; pos.y += res.vy * 0.08; pos.z += res.vz * 0.08;
+
+                // 超出邊界重生邏輯
+                if (Math.abs(pos.x)>40 || pos.y>35 || pos.y<0 || Math.abs(pos.z)>40 || res.speed<0.05) {
+                    pos.set((Math.random()-0.5)*80, Math.random()*30, (Math.random()-0.5)*80);
+                    if (planeMode === 'Y') pos.y = slicePos;
+                    if (planeMode === 'X') pos.x = slicePos;
+                    if (planeMode === 'Z') pos.z = slicePos;
+                }
+                
+                let targetDir = new THREE.Vector3(res.vx, res.vy, res.vz).normalize();
+                if (targetDir.lengthSq() > 0.1) q.setFromUnitVectors(new THREE.Vector3(0,0,1), targetDir);
+                
+                dummy.position.copy(pos); dummy.quaternion.copy(q); dummy.scale.setScalar(Math.max(0.4, Math.min(1.5, res.speed/refVel)));
+                dummy.updateMatrix();
+                arrowInstancedMesh.setMatrixAt(i, dummy.matrix);
+                arrowInstancedMesh.setColorAt(i, getArrowColor(Math.min(1, res.speed/(refVel*1.5))));
+            }
+            arrowInstancedMesh.instanceMatrix.needsUpdate = true;
+            arrowInstancedMesh.instanceColor.needsUpdate = true;
+        }
+        controls.update();
+        renderer.render(scene, camera);
+    }
+
+    function toggleSimulation() {
+        isRunning = !isRunning;
+        const btn = document.getElementById('solveBtn'), badge = document.getElementById('statusBadge');
+        if(isRunning) {
+            btn.className = "btn-solve stop"; document.getElementById('solveIcon').innerText = "⏸"; document.getElementById('solveText').innerText = "暫停計算";
+            badge.innerText = "RUNNING"; badge.className = "status-badge running";
+        } else {
+            btn.className = "btn-solve"; document.getElementById('solveIcon').innerText = "▶"; document.getElementById('solveText').innerText = "啟動計算";
+            badge.innerText = "PAUSED"; badge.className = "status-badge paused";
+        }
+    }
+
+    init();
+</script>
+</body>
+</html>
