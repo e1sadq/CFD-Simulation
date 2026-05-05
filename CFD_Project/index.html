@@ -2,12 +2,11 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>CFD 建築流場專業診斷系統 - 114408123 邱品豪 (完美修正版)</title>
+    <title>CFD 建築流場專業診斷系統 - 114408123 邱品豪 (V16 向量匯合版)</title>
     <style>
         :root { --ansys-blue: #00aaff; --solver-green: #00ff88; --bg-dark: #0a0a0c; --panel-bg: rgba(18, 18, 20, 0.95); }
         body { margin: 0; font-family: "Segoe UI", "Microsoft JhengHei", sans-serif; background: var(--bg-dark); color: #fff; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
         
-        /* 雙層頂部控制面板 */
         #top-bar { background: #161618; border-bottom: 1px solid #333; display: flex; flex-direction: column; z-index: 100; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
         .row { display: flex; padding: 10px 20px; gap: 15px; align-items: center; border-bottom: 1px dashed #2a2a2a; flex-wrap: wrap; }
         .row:last-child { border-bottom: none; }
@@ -21,8 +20,9 @@
         
         .btn-solve { background: var(--solver-green); color: #000; border: none; padding: 8px 18px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.3s; display: flex; align-items: center; gap: 5px; }
         .btn-solve.stop { background: #ff4500; color: white; }
+        .btn-vortex { background: #ff4500; color: #fff; border: 1px solid #ffaa00; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.3s; }
+        .btn-vortex.active { background: #ffaa00; color: #000; }
 
-        /* 畫布與資訊卡 */
         #viewport { flex-grow: 1; position: relative; }
         .analysis-card { position: absolute; top: 15px; right: 15px; width: 440px; background: var(--panel-bg); border-radius: 10px; padding: 22px; border: 1px solid #333; box-shadow: 0 10px 40px rgba(0,0,0,0.9); max-height: calc(100vh - 120px); overflow-y: auto; backdrop-filter: blur(8px); }
         h2 { margin: 0 0 12px 0; color: var(--ansys-blue); font-size: 18px; border-bottom: 1px solid #333; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
@@ -35,7 +35,6 @@
         .legend { margin: 15px 0 5px 0; height: 12px; background: linear-gradient(to right, #0011ff, #00d4ff, #ffbb00, #ff0000); border-radius: 6px; }
         .legend-labels { display: flex; justify-content: space-between; font-size: 10px; color: #aaa; margin-bottom: 15px; }
         
-        /* 深度分析區塊 */
         .insight-section { background: #161616; padding: 12px; border-radius: 6px; border-left: 4px solid #ffbc00; margin-bottom: 12px; }
         .insight-title { font-weight: bold; color: #fff; margin-bottom: 8px; font-size: 14px; border-bottom: 1px solid #333; padding-bottom: 5px;}
         .insight-text { font-size: 12.5px; line-height: 1.7; color: #ccc; text-align: justify; }
@@ -53,30 +52,33 @@
 <div id="top-bar">
     <div class="row">
         <button id="solveBtn" class="btn-solve" onclick="toggleSimulation()">
-            <span id="solveIcon">▶</span> <span id="solveText">啟動求解計算 (Run)</span>
+            <span id="solveIcon">▶</span> <span id="solveText">啟動計算 (Run)</span>
+        </button>
+        <button id="vortexBtn" class="btn-vortex" onclick="toggleVortex()">
+            👁️ 顯示馬蹄渦流跡線
         </button>
         <div class="control-group">
-            <strong>🧭 風向角 (θ):</strong>
+            <strong>🧭 風向角(θ):</strong>
             <input type="number" id="angleInput" value="0" style="width:45px;">°
             <input type="range" id="angleSlider" min="0" max="360" value="0">
         </div>
         <div class="control-group">
-            <strong>📏 建築棟距 (Gap):</strong>
+            <strong>📏 建築棟距:</strong>
             <input type="number" id="gapInput" value="12" style="width:40px;"> m
-            <input type="range" id="gapSlider" min="6" max="30" value="12">
+            <input type="range" id="gapSlider" min="6" max="35" value="12">
         </div>
         <div class="control-group">
             <strong>🌪️ 入口風速:</strong>
-            <input type="number" id="velInput" value="5" min="1" max="20" style="width:40px;"> m/s
+            <input type="number" id="velInput" value="5" min="1" max="20" style="width:40px;">
         </div>
     </div>
     <div class="row">
         <div class="control-group adv">
             <strong>🪓 剖面方向:</strong>
             <select id="planeMode" onchange="updatePlaneOrientation()">
-                <option value="Y" selected>水平面 (XY高度切片)</option>
-                <option value="X">縱切面 (YZ左右切片)</option>
-                <option value="Z">橫切面 (XZ前後切片)</option>
+                <option value="Y" selected>水平面 (XY切片)</option>
+                <option value="X">縱切面 (YZ切片)</option>
+                <option value="Z">橫切面 (XZ切片)</option>
             </select>
         </div>
         <div class="control-group adv">
@@ -87,13 +89,12 @@
         <div class="control-group adv">
             <strong>🧠 紊流模型:</strong>
             <select id="turbSelect" onchange="updateDisplay()">
-                <option value="1">Standard k-ε</option>
-                <option value="2" selected>Realizable k-ε (穩定)</option>
+                <option value="2" selected>Realizable k-ε</option>
                 <option value="3">k-ω SST (高精度)</option>
             </select>
         </div>
         <div class="control-group adv">
-            <strong>🔄 疊代 (Iter):</strong>
+            <strong>🔄 疊代(Iter):</strong>
             <input type="number" id="iterInput" value="1000" style="width:55px;">
         </div>
     </div>
@@ -101,7 +102,7 @@
 
 <div id="viewport">
     <div class="analysis-card">
-        <h2>🏗️ 建築風場診斷報告 <span id="statusBadge" class="status-badge paused">PAUSED</span></h2>
+        <h2>🏗️ 建築風場向量診斷 <span id="statusBadge" class="status-badge paused">PAUSED</span></h2>
         
         <div class="data-grid">
             <div class="data-box">
@@ -115,10 +116,10 @@
         </div>
 
         <div class="legend"></div>
-        <div class="legend-labels"><span>0.0 (死角)</span><span>中等流速</span><span><span id="maxLabel">5.0</span> (強風)</span></div>
+        <div class="legend-labels"><span>0.0 (死水區)</span><span>中等流速</span><span><span id="maxLabel">5.0</span> (加速區)</span></div>
 
         <div class="insight-section">
-            <div class="insight-title">🔍 物理現象觀測與分析</div>
+            <div class="insight-title">🔍 向量流場觀測 (Vector Field)</div>
             <div class="insight-text" id="obsText">...</div>
         </div>
         <div class="insight-section" style="border-left-color: #00aaff;">
@@ -133,7 +134,7 @@
             </div>
         </div>
     </div>
-    <div class="hint">🖱️ 視角：左鍵旋轉 | 右鍵平移 | 滾輪縮放。切換「縱切面」至 X=0 可觀測氣流下洗產生的馬蹄渦流剖面。</div>
+    <div class="hint">🖱️ 左鍵旋轉 | 右鍵平移 | 滾輪縮放。觀察箭頭在建築前方的發散與後方的匯合現象。</div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -141,9 +142,10 @@
 
 <script>
     let scene, camera, renderer, controls, b1, b2, slicePlane, arrowInstancedMesh;
+    let vortexGroup; 
     let angle = 0, refVel = 5, slicePos = 5, gap = 12, planeMode = 'Y', turbModel = 2;
-    let isRunning = false;
-    const arrowCount = 4000;
+    let isRunning = false, showVortex = false;
+    const arrowCount = 4500;
     const dummy = new THREE.Object3D();
 
     function getArrowColor(normSpeed) {
@@ -154,52 +156,89 @@
         return c;
     }
 
-    // --- 真實 3D 向量場物理演算 ---
+    // --- V16：新增橫向速度分量 (Transverse Velocity) 產生匯合與發散效果 ---
     function getVelocity(x, y, z) {
         let rad = (angle * Math.PI) / 180;
         let cosA = Math.cos(rad), sinA = Math.sin(rad);
-        let rnx = x * cosA - z * sinA, rnz = x * sinA + z * cosA;
+        
+        let rnx = x * cosA - z * sinA;
+        let rnz = x * sinA + z * cosA;
 
         let envU = refVel * Math.pow(Math.max(0.1, y) / 20, 0.22);
-        let vx = Math.sin(rad) * envU, vz = -Math.cos(rad) * envU, vy = 0;
+        let vx = Math.sin(rad) * envU, vz = Math.cos(rad) * envU, vy = 0;
 
         if (y > 35) return { speed: envU, vx, vy, vz };
 
+        const bDepth = 8; 
         const b1Z = -gap/2, b2Z = gap/2;
-        // 建築實體判定 (建築高度為20m)
+        
         if (Math.abs(x) <= 8 && y <= 20 && (Math.abs(z - b1Z) <= 4 || Math.abs(z - b2Z) <= 4)) return { speed: 0, vx: 0, vy: 0, vz: 0 };
 
-        let speed = envU;
+        let v_stream = envU; // 順風向流速 (Streamwise)
+        let v_transverse = 0; // 橫向流速 (Transverse - 產生匯合與發散)
+        
         const bCenters = [ {x:0, z:b1Z}, {x:0, z:b2Z} ];
         let totalWake = 0, totalAccel = 0;
+        let gapRatio = gap / bDepth;
 
-        bCenters.forEach((bc, idx) => {
+        bCenters.forEach((bc, index) => {
             let dx = x - bc.x, dz = z - bc.z;
             let lnx = dx * cosA - dz * sinA, lnz = dx * sinA + dz * cosA;
 
-            // 馬蹄形渦流成因：迎風面下洗 (Downwash)
-            if (lnz < 0 && lnz > -8 && Math.abs(lnx) < 9) {
-                if (y < 8) vy -= envU * 0.4 * (1 - y/8); // 近地面強烈下洗
-                else if (y > 15) vy += envU * 0.3; // 越頂爬升
+            // 1. 迎風滯留點與【發散力】(Bow wave divergence)
+            if (lnz < 0 && lnz > -12 && Math.abs(lnx) < 12) {
+                let stagFactor = 1.0;
+                if (index === 1 && gapRatio < 2.5 && Math.abs(angle % 180) < 30) stagFactor = 0.1;
+                
+                let bowForce = stagFactor * Math.exp(-Math.abs(lnz)*0.4) * Math.exp(-(lnx*lnx)/40);
+                totalWake += bowForce; 
+                
+                if (stagFactor > 0.5) {
+                    if (y < 8) vy -= envU * 0.4 * (1 - y/8); 
+                    else if (y > 15) vy += envU * 0.3; 
+                }
+
+                // 加入橫向發散力：氣流向兩側推開
+                v_transverse += (lnx > 0 ? 1 : -1) * Math.min(Math.abs(lnx), 8) * envU * 0.2 * bowForce;
             }
 
-            // 尾流區下沉
-            if (lnz > 0 && lnz < 25 && y < 22 && Math.abs(lnx) < 10) {
-                let spread = (turbModel == 3) ? 6 : 8;
-                let intensity = Math.exp(-lnz / 18.0);
-                totalWake += Math.exp(-(lnx * lnx) / (spread * spread)) * intensity;
-                vy -= envU * 0.1; // 尾流下沉
+            // 2. 尾流恢復與【內聚匯合力】(Wake Convergence)
+            if (lnz > 0) {
+                let spread = 8 + lnz * 0.25; 
+                let intensity = Math.exp(-lnz / 18.0); 
+                
+                if (index === 0 && gapRatio < 2.5 && Math.abs(angle % 180) < 30) {
+                    if (lnz < gap + 8) intensity = 1.0; 
+                }
+
+                let profile = Math.exp(-(lnx * lnx) / (spread * spread));
+                totalWake += profile * intensity * 1.05;
+                vy -= envU * 0.05; 
+
+                // 加入橫向內聚力：氣流向中心線 (lnx=0) 彎曲匯合
+                if (lnz < 40) {
+                    let convergeForce = profile * intensity;
+                    // 根據粒子位置產生向內的向量
+                    v_transverse += -Math.sign(lnx) * Math.min(Math.abs(lnx), spread) * envU * 0.35 * convergeForce;
+                }
             }
 
-            // 角流加速 (Corner Stream)
-            if (Math.abs(lnx) > 6 && Math.abs(lnx) < 16 && Math.abs(lnz) < 10 && y <= 20) {
-                totalAccel += Math.exp(-Math.abs(Math.abs(lnx) - 8) * 0.4) * 0.6;
+            // 3. 角流加速帶
+            if (lnz > -5 && lnz < 15) {
+                let edgeDist = Math.abs(Math.abs(lnx) - 8);
+                let accel = Math.exp(-edgeDist * 0.5) * Math.exp(-Math.abs(lnz) * 0.2);
+                if (index === 1 && gapRatio < 2.5 && Math.abs(angle % 180) < 30) accel *= 0.2;
+                totalAccel += accel * 0.6;
             }
         });
 
-        speed = speed * Math.max(0, (1 - totalWake)) + envU * totalAccel;
-        vx = Math.sin(rad) * speed;
-        vz = -Math.cos(rad) * speed;
+        // 整合風速
+        v_stream = envU * Math.max(0.05, (1 - Math.min(1, totalWake))) + envU * totalAccel;
+        
+        // ★ 核心旋轉矩陣：將 (順風, 橫向) 向量轉回 (X, Z) 世界座標 ★
+        vx = v_transverse * cosA + v_stream * sinA;
+        vz = -v_transverse * sinA + v_stream * cosA;
+        
         let finalSpeed = Math.sqrt(vx*vx + vy*vy + vz*vz);
 
         return { speed: finalSpeed, vx, vy, vz };
@@ -209,7 +248,7 @@
         scene = new THREE.Scene();
         scene.background = new THREE.Color(0x0a0a0c);
         camera = new THREE.PerspectiveCamera(45, window.innerWidth/(window.innerHeight-120), 0.1, 1000);
-        camera.position.set(55, 45, 65);
+        camera.position.set(65, 55, -65);
 
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight-120);
@@ -220,20 +259,18 @@
 
         scene.add(new THREE.AmbientLight(0xffffff, 0.4));
         const sun = new THREE.DirectionalLight(0xffffff, 0.8); sun.position.set(20,50,20); scene.add(sun);
-        
-        // 黑色的參考地面網格 (Z=0底層)
         scene.add(new THREE.GridHelper(100, 50, 0x333333, 0x111111));
 
         const bMat = new THREE.MeshPhongMaterial({ color: 0x666666, transparent: true, opacity: 0.85 });
         b1 = new THREE.Mesh(new THREE.BoxGeometry(16, 20, 8), bMat); scene.add(b1);
         b2 = new THREE.Mesh(new THREE.BoxGeometry(16, 20, 8), bMat); scene.add(b2);
+        b1.position.y = 10; b2.position.y = 10;
 
-        // 確保建築物底部貼齊地面網格 (Y=0)
-        b1.position.y = 10;
-        b2.position.y = 10;
-
-        slicePlane = new THREE.Mesh(new THREE.PlaneGeometry(80, 80, 100, 100), new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.65, side: THREE.DoubleSide }));
+        slicePlane = new THREE.Mesh(new THREE.PlaneGeometry(80, 80, 150, 150), new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.7, side: THREE.DoubleSide }));
         scene.add(slicePlane);
+
+        vortexGroup = new THREE.Group();
+        scene.add(vortexGroup);
 
         const arrowGeo = new THREE.ConeGeometry(0.35, 1.4, 4);
         arrowGeo.rotateX(Math.PI / 2);
@@ -241,55 +278,76 @@
         scene.add(arrowInstancedMesh);
 
         setupUI();
-        updatePlaneOrientation(); // 啟動時先呼叫一次，確保切面與滑桿同步
+        updatePlaneOrientation(); 
         animate();
+    }
+
+    function drawVortex() {
+        while(vortexGroup.children.length > 0){ vortexGroup.remove(vortexGroup.children[0]); }
+        if (!showVortex) return;
+
+        let rad = (angle * Math.PI) / 180;
+        let b1Z = -gap/2; 
+
+        for (let r = 10; r <= 14; r += 2) {
+            let pts = [];
+            pts.push(new THREE.Vector3(-r, 1.0, b1Z + 20));
+            pts.push(new THREE.Vector3(-r, 1.0, b1Z));
+            for(let t = Math.PI; t >= 0; t -= Math.PI/15) {
+                let cx = Math.cos(t) * r;
+                let cz = (b1Z - 4) - Math.sin(t) * 6;
+                pts.push(new THREE.Vector3(cx, 1.0, cz));
+            }
+            pts.push(new THREE.Vector3(r, 1.0, b1Z));
+            pts.push(new THREE.Vector3(r, 1.0, b1Z + 20));
+
+            let rotatedPts = pts.map(p => {
+                let rx = p.x * Math.cos(rad) + p.z * Math.sin(rad);
+                let rz = -p.x * Math.sin(rad) + p.z * Math.cos(rad);
+                return new THREE.Vector3(rx, p.y, rz);
+            });
+
+            const curve = new THREE.CatmullRomCurve3(rotatedPts);
+            const geo = new THREE.TubeGeometry(curve, 64, 0.35, 8, false);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xff4500, transparent: true, opacity: 0.8 });
+            vortexGroup.add(new THREE.Mesh(geo, mat));
+        }
+    }
+
+    function toggleVortex() {
+        showVortex = !showVortex;
+        const btn = document.getElementById('vortexBtn');
+        btn.className = showVortex ? "btn-vortex active" : "btn-vortex";
+        drawVortex();
     }
 
     function setupUI() {
         ['angleSlider', 'angleInput'].forEach(id => document.getElementById(id).oninput = e => { 
-            angle = document.getElementById('angleInput').value = document.getElementById('angleSlider').value = e.target.value; updateDisplay(); 
+            angle = document.getElementById('angleInput').value = document.getElementById('angleSlider').value = e.target.value; 
+            updateDisplay(); drawVortex(); 
         });
         ['gapSlider', 'gapInput'].forEach(id => document.getElementById(id).oninput = e => { 
-            gap = document.getElementById('gapInput').value = document.getElementById('gapSlider').value = e.target.value; updateDisplay(); 
+            gap = document.getElementById('gapInput').value = document.getElementById('gapSlider').value = e.target.value; 
+            updateDisplay(); drawVortex(); 
         });
         document.getElementById('velInput').onchange = e => { refVel = e.target.value; updateDisplay(); };
-        
-        // ★ 剖面滑桿：切換高度或左右前後 ★
-        document.getElementById('posSlider').oninput = e => { 
-            slicePos = parseFloat(e.target.value); 
-            document.getElementById('posTxt').innerText = slicePos.toFixed(1); 
-            updateDisplay(); 
-        };
-        
+        document.getElementById('posSlider').oninput = e => { slicePos = parseFloat(e.target.value); document.getElementById('posTxt').innerText = slicePos.toFixed(1); updateDisplay(); };
         document.getElementById('turbSelect').onchange = e => { turbModel = e.target.value; updateDisplay(); };
     }
 
-    // ★ 關鍵修正：確實更新下拉選單的數值並重新設定平面 ★
     function updatePlaneOrientation() {
-        planeMode = document.getElementById('planeMode').value; // 讀取最新的下拉選單數值
+        planeMode = document.getElementById('planeMode').value; 
         const s = document.getElementById('posSlider');
-        
-        if (planeMode === 'Y') { 
-            slicePlane.rotation.set(-Math.PI/2, 0, 0); 
-            s.min = 0; s.max = 35; s.value = slicePos = 5; 
-        } else if (planeMode === 'X') { 
-            slicePlane.rotation.set(0, -Math.PI/2, 0); 
-            s.min = -35; s.max = 35; s.value = slicePos = 0; 
-        } else if (planeMode === 'Z') { 
-            slicePlane.rotation.set(0, 0, 0); 
-            s.min = -45; s.max = 45; s.value = slicePos = 0; 
-        }
-        
+        if (planeMode === 'Y') { slicePlane.rotation.set(-Math.PI/2, 0, 0); s.min = 0; s.max = 35; s.value = slicePos = 5; } 
+        else if (planeMode === 'X') { slicePlane.rotation.set(0, -Math.PI/2, 0); s.min = -35; s.max = 35; s.value = slicePos = 0; } 
+        else if (planeMode === 'Z') { slicePlane.rotation.set(0, 0, 0); s.min = -45; s.max = 45; s.value = slicePos = 0; }
         document.getElementById('posTxt').innerText = slicePos.toFixed(1);
         updateDisplay();
     }
 
     function updateDisplay() {
-        // 更新建築物間距
-        b1.position.set(0, 10, -gap/2); 
-        b2.position.set(0, 10, gap/2);
+        b1.position.set(0, 10, -gap/2); b2.position.set(0, 10, gap/2);
 
-        // 更新切面位置
         if (planeMode === 'Y') slicePlane.position.set(0, slicePos, 0);
         else if (planeMode === 'X') slicePlane.position.set(slicePos, 10, 0);
         else slicePlane.position.set(0, 10, slicePos);
@@ -320,34 +378,29 @@
     function generateExpertReport() {
         let obs = "", phy = "", pro = "", con = "";
         
-        // 1. 物理現象觀測
         if (planeMode === 'Y') {
-            obs = `目前為 <b>水平切片 (XY平面)</b>，觀測高度為 ${slicePos.toFixed(1)}m。`;
-            if (slicePos < 5) {
-                obs += `緊貼地面層，可清晰觀測到 <span class="highlight">馬蹄形渦流 (Horseshoe Vortex)</span> 的擴散跡象。風場向量在建築前方向外側彎曲捲動。`;
-            } else if (slicePos > 16) {
-                obs += `接近頂部。氣流被擠向外側，形成明顯的橘紅色 <span class="highlight">角流加速帶 (Corner Stream)</span>。`;
-            } else {
-                obs += `觀察重點在於背風側的屏蔽效應與兩棟之間的穿堂風。`;
+            obs = `✅ <b>向量內聚匯合 (Vector Convergence)：</b>請注視建築物後方！箭頭不再只是直直向前，而是如水流般優雅地 <span class="highlight">向內彎曲、匯合填補死角區</span>。這完美展現了真實動量交換的過程。`;
+            if (slicePos < 5 && showVortex) {
+                obs += `<br>✅ <b>馬蹄形渦流：</b>已開啟 3D 渦流跡線。可觀測下洗氣流觸地後，如同馬蹄鐵般向建築兩側捲曲的流動特徵。`;
             }
         } else if (planeMode === 'X') {
-            obs = `目前為 <b>縱切面 (YZ左右剖面)</b>，X軸座標：${slicePos.toFixed(1)}m。這是觀測 3D 垂直流場的最佳視角！`;
-            if (Math.abs(slicePos) < 5) {
-                obs += `<br>👉 您可以清楚看到迎風面箭頭向下傾斜，這就是馬蹄渦流成因的 <span class="highlight">下洗氣流 (Downwash)</span>；同時也能看見屋頂氣流的越頂與背風面下沉現象。`;
-            }
+            obs = `縱切面可觀測空間中的 <span class="highlight">下洗氣流 (Downwash)</span> 與屋頂的越頂分離現象。`;
         } else {
-            obs = `目前為 <b>橫切面 (XZ前後剖面)</b>，適合觀測建築尾流在空間中的橫向延展寬度。`;
+            obs = `橫切面適合觀測尾流在空間中的橫向延展寬度。`;
         }
 
-        // 2. 專業知識
-        phy = `根據 <b>AIJ (日本建築學會)</b> 與歐洲 COST 指南，兩建築棟距 <b>Gap=${gap}m</b> 時：`;
-        if (gap < 10) phy += `<br>⚠️ <b>間距狹窄警告：</b>兩建築之尾流相互干擾（流場耦合）。後棟的風壓極低，失去自然通風潛力。`;
-        else if (gap > 20) phy += `<br>✅ <b>自然通風恢復：</b>棟距寬廣。前方尾流的動能有足夠空間恢復，後棟建築可有效獲得新鮮對流。`;
-        else phy += `<br>ℹ️ 處於過渡區。後方建築位於前棟的屏蔽風影內，風力雖減弱，但通道間仍有微弱紊流。`;
-
-        // 3. 優缺點
-        pro = `➕ <b>結構優勢：</b>後棟建築因前方遮擋，其承受的總體風載重 (Total Wind Load) 大幅減少，可優化結構設計。`;
-        con = `➖ <b>環境風險：</b>尾流死角區 (深藍色) 的空氣交換率 (ACH) 幾乎停滯。若此區為開放空間，將嚴重累積廢氣與熱島高溫。`;
+        let gapRatio = (gap / 8).toFixed(1);
+        phy = `根據流體力學中串列雙鈍體 (Tandem Bluff Bodies) 的研究，兩棟建築物之間的流場模式取決於「間距比 (Gap Spacing Ratio)」。目前 Gap=${gap}m (間距比 ${gapRatio})：`;
+        
+        if (gap < 18) {
+            phy += `<br>⚠️ <b>單一實體模式：</b>當間距極小的時候，氣流的剪切層會直接越過間隙。前棟的尾流死水區完全籠罩後棟，中間無氣流穿透。`;
+            con = `➖ <b>致命死角：</b>兩棟中間的間隙屬於死水區，空氣交換停滯，極度不利於污染物消散。`;
+            pro = `➕ <b>結構遮蔽：</b>後方建築因處於死水區，受到的風載重降至最低。`;
+        } else {
+            phy += `<br>✅ <b>通道流模式：</b>當間距拉大超過臨界值後，氣流才會捲入間隙，形成穿堂風。前方尾流動能已初步恢復。`;
+            con = `➖ <b>尾流衝擊：</b>通道內風速漸增，可能導致後棟受到的風壓脈動變強。`;
+            pro = `➕ <b>通風恢復：</b>間隙內重新獲得動能，大幅改善了建築群微氣候的對流散熱能力。`;
+        }
 
         document.getElementById('obsText').innerHTML = obs;
         document.getElementById('phyText').innerHTML = phy;
@@ -359,11 +412,12 @@
         requestAnimationFrame(animate);
         if(isRunning) {
             let matrix = new THREE.Matrix4(), q = new THREE.Quaternion();
+            let rad = (angle * Math.PI) / 180;
+
             for(let i=0; i<arrowCount; i++) {
                 arrowInstancedMesh.getMatrixAt(i, matrix);
                 let pos = new THREE.Vector3().setFromMatrixPosition(matrix);
                 
-                // 維持動態箭頭在觀測剖面附近
                 if (planeMode === 'Y') pos.y = slicePos + (Math.random()-0.5)*1.5;
                 else if (planeMode === 'X') pos.x = slicePos + (Math.random()-0.5)*1.5;
                 else pos.z = slicePos + (Math.random()-0.5)*1.5;
@@ -371,9 +425,20 @@
                 let res = getVelocity(pos.x, pos.y, pos.z);
                 pos.x += res.vx * 0.08; pos.y += res.vy * 0.08; pos.z += res.vz * 0.08;
 
-                // 超出邊界重生邏輯
                 if (Math.abs(pos.x)>40 || pos.y>35 || pos.y<0 || Math.abs(pos.z)>40 || res.speed<0.05) {
-                    pos.set((Math.random()-0.5)*80, Math.random()*30, (Math.random()-0.5)*80);
+                    let absSin = Math.abs(Math.sin(rad));
+                    let absCos = Math.abs(Math.cos(rad));
+                    let rand = Math.random() * (absSin + absCos);
+
+                    if (rand < absSin) {
+                        pos.x = Math.sin(rad) > 0 ? -40 : 40;
+                        pos.z = (Math.random() - 0.5) * 80;
+                    } else {
+                        pos.z = Math.cos(rad) > 0 ? -40 : 40;
+                        pos.x = (Math.random() - 0.5) * 80;
+                    }
+                    
+                    pos.y = Math.random()*30;
                     if (planeMode === 'Y') pos.y = slicePos;
                     if (planeMode === 'X') pos.x = slicePos;
                     if (planeMode === 'Z') pos.z = slicePos;
