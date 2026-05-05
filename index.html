@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>CFD 建築流場專業診斷系統 - 114408123 邱品豪 (V16 向量匯合版)</title>
+    <title>CFD 建築流場專業診斷系統 - 114408123 邱品豪 (V16 面板內縮版)</title>
     <style>
         :root { --ansys-blue: #00aaff; --solver-green: #00ff88; --bg-dark: #0a0a0c; --panel-bg: rgba(18, 18, 20, 0.95); }
         body { margin: 0; font-family: "Segoe UI", "Microsoft JhengHei", sans-serif; background: var(--bg-dark); color: #fff; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
@@ -23,10 +23,36 @@
         .btn-vortex { background: #ff4500; color: #fff; border: 1px solid #ffaa00; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.3s; }
         .btn-vortex.active { background: #ffaa00; color: #000; }
 
-        #viewport { flex-grow: 1; position: relative; }
-        .analysis-card { position: absolute; top: 15px; right: 15px; width: 440px; background: var(--panel-bg); border-radius: 10px; padding: 22px; border: 1px solid #333; box-shadow: 0 10px 40px rgba(0,0,0,0.9); max-height: calc(100vh - 120px); overflow-y: auto; backdrop-filter: blur(8px); }
+        #viewport { flex-grow: 1; position: relative; overflow: hidden; } /* 加入 overflow: hidden 避免面板超出時產生捲軸 */
+        
+        /* 面板與內縮動畫設定 */
+        .analysis-card { 
+            position: absolute; top: 15px; right: 15px; width: 440px; 
+            background: var(--panel-bg); border-radius: 10px; padding: 22px; 
+            border: 1px solid #333; box-shadow: 0 10px 40px rgba(0,0,0,0.9); 
+            max-height: calc(100vh - 120px); overflow-y: auto; backdrop-filter: blur(8px); 
+            transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); /* 平滑過渡動畫 */
+            z-index: 10;
+        }
+        /* 當被加上 collapsed 類別時，向右平移 500px 出畫面 */
+        .analysis-card.collapsed { transform: translateX(500px); }
+
+        /* 隱藏的呼叫按鈕 */
+        #showPanelBtn {
+            display: none; position: absolute; top: 20px; right: -5px;
+            background: var(--ansys-blue); color: #fff; font-weight: bold;
+            padding: 8px 20px; border-radius: 8px 0 0 8px; border: none;
+            cursor: pointer; box-shadow: -3px 0 10px rgba(0,0,0,0.5); z-index: 5;
+            transition: 0.3s; font-size: 14px;
+        }
+        #showPanelBtn:hover { background: #0088cc; padding-right: 25px; right: 0; }
+
         h2 { margin: 0 0 12px 0; color: var(--ansys-blue); font-size: 18px; border-bottom: 1px solid #333; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
         
+        /* 標題列的收起按鈕 */
+        .collapse-btn { background: none; border: none; color: #aaa; cursor: pointer; font-size: 18px; transition: 0.2s; padding: 0;}
+        .collapse-btn:hover { color: #fff; transform: scale(1.2); }
+
         .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
         .data-box { background: #1a1a1a; padding: 10px; border-radius: 6px; border: 1px solid #2a2a2a; }
         .data-label { font-size: 11px; color: #888; margin-bottom: 4px; }
@@ -101,8 +127,17 @@
 </div>
 
 <div id="viewport">
-    <div class="analysis-card">
-        <h2>🏗️ 建築風場向量診斷 <span id="statusBadge" class="status-badge paused">PAUSED</span></h2>
+    
+    <button id="showPanelBtn" onclick="togglePanel()">📊 顯示報告 ⬅️</button>
+
+    <div class="analysis-card" id="analysisCard">
+        <h2>
+            <span style="display:flex; align-items:center; gap:10px;">
+                🏗️ 建築風場向量診斷 
+                <span id="statusBadge" class="status-badge paused">PAUSED</span>
+            </span>
+            <button class="collapse-btn" onclick="togglePanel()" title="收起面板">⏭️</button>
+        </h2>
         
         <div class="data-grid">
             <div class="data-box">
@@ -141,6 +176,20 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 
 <script>
+    // --- 新增：面板收合與展開邏輯 ---
+    function togglePanel() {
+        const card = document.getElementById('analysisCard');
+        const btn = document.getElementById('showPanelBtn');
+        
+        card.classList.toggle('collapsed'); // 切換 CSS 動畫類別
+        
+        if (card.classList.contains('collapsed')) {
+            btn.style.display = 'block'; // 面板收起時，顯示小標籤
+        } else {
+            btn.style.display = 'none';  // 面板展開時，隱藏小標籤
+        }
+    }
+
     let scene, camera, renderer, controls, b1, b2, slicePlane, arrowInstancedMesh;
     let vortexGroup; 
     let angle = 0, refVel = 5, slicePos = 5, gap = 12, planeMode = 'Y', turbModel = 2;
@@ -156,7 +205,7 @@
         return c;
     }
 
-    // --- V16：新增橫向速度分量 (Transverse Velocity) 產生匯合與發散效果 ---
+    // --- 物理引擎 (與原本完全相同) ---
     function getVelocity(x, y, z) {
         let rad = (angle * Math.PI) / 180;
         let cosA = Math.cos(rad), sinA = Math.sin(rad);
@@ -174,8 +223,8 @@
         
         if (Math.abs(x) <= 8 && y <= 20 && (Math.abs(z - b1Z) <= 4 || Math.abs(z - b2Z) <= 4)) return { speed: 0, vx: 0, vy: 0, vz: 0 };
 
-        let v_stream = envU; // 順風向流速 (Streamwise)
-        let v_transverse = 0; // 橫向流速 (Transverse - 產生匯合與發散)
+        let v_stream = envU; 
+        let v_transverse = 0; 
         
         const bCenters = [ {x:0, z:b1Z}, {x:0, z:b2Z} ];
         let totalWake = 0, totalAccel = 0;
@@ -185,7 +234,6 @@
             let dx = x - bc.x, dz = z - bc.z;
             let lnx = dx * cosA - dz * sinA, lnz = dx * sinA + dz * cosA;
 
-            // 1. 迎風滯留點與【發散力】(Bow wave divergence)
             if (lnz < 0 && lnz > -12 && Math.abs(lnx) < 12) {
                 let stagFactor = 1.0;
                 if (index === 1 && gapRatio < 2.5 && Math.abs(angle % 180) < 30) stagFactor = 0.1;
@@ -198,11 +246,9 @@
                     else if (y > 15) vy += envU * 0.3; 
                 }
 
-                // 加入橫向發散力：氣流向兩側推開
                 v_transverse += (lnx > 0 ? 1 : -1) * Math.min(Math.abs(lnx), 8) * envU * 0.2 * bowForce;
             }
 
-            // 2. 尾流恢復與【內聚匯合力】(Wake Convergence)
             if (lnz > 0) {
                 let spread = 8 + lnz * 0.25; 
                 let intensity = Math.exp(-lnz / 18.0); 
@@ -215,15 +261,12 @@
                 totalWake += profile * intensity * 1.05;
                 vy -= envU * 0.05; 
 
-                // 加入橫向內聚力：氣流向中心線 (lnx=0) 彎曲匯合
                 if (lnz < 40) {
                     let convergeForce = profile * intensity;
-                    // 根據粒子位置產生向內的向量
                     v_transverse += -Math.sign(lnx) * Math.min(Math.abs(lnx), spread) * envU * 0.35 * convergeForce;
                 }
             }
 
-            // 3. 角流加速帶
             if (lnz > -5 && lnz < 15) {
                 let edgeDist = Math.abs(Math.abs(lnx) - 8);
                 let accel = Math.exp(-edgeDist * 0.5) * Math.exp(-Math.abs(lnz) * 0.2);
@@ -232,10 +275,8 @@
             }
         });
 
-        // 整合風速
         v_stream = envU * Math.max(0.05, (1 - Math.min(1, totalWake))) + envU * totalAccel;
         
-        // ★ 核心旋轉矩陣：將 (順風, 橫向) 向量轉回 (X, Z) 世界座標 ★
         vx = v_transverse * cosA + v_stream * sinA;
         vz = -v_transverse * sinA + v_stream * cosA;
         
